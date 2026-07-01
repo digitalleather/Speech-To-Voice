@@ -1,0 +1,26 @@
+[
+  {
+    "id": "1",
+    "ime": "Marko",
+    "prezime": "Marković",
+    "datum_rodjenja": "12.05.1990"
+  },
+  {
+    "id": "2",
+    "ime": "Jelena",
+    "prezime": "Jovanović",
+    "datum_rodjenja": "03.11.1988"
+  },
+  {
+    "id": "3",
+    "ime": "Petar",
+    "prezime": "Petrović",
+    "datum_rodjenja": "21.07.1995"
+  },
+  {
+    "id": "4",
+    "ime": "Ana",
+    "prezime": "Nikolić",
+    "datum_rodjenja": "15.02.1992"
+  }
+]

@@ -1,0 +1,12 @@
+- Popuniti vektorske baze da budu identicne sa excel fajlom sheet 1 i sheet 2
+    # Zavrseno
+
+- Napraviti test set pitanja
+    # Zavrseno
+
+- Napraviti vojni dizajn ali da ima i robotic AI maskotica (mozda sa vojnim slemom)
+
+- Svaki tekst koji user vidi mora da bude u cirilici
+    # Zavrseno
+
+- Napraviti da se na dugme drzi mikrofon i kada se pusti da se automatski pokrene pitanje
