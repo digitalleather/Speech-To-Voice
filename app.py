@@ -4,7 +4,7 @@ Srpski STT + lokalna vektorska pretraga projektnih statusa i HR podataka
 
 Aplikacija koristi OpenAI API za speech-to-text i embeddings,
 a lokalnu ChromaDB bazu za semantičku pretragu:
-- Projektni statusi vozila (project_statuses kolekcija)
+- Projektni statusi vozila (project_statuses kolekcija) 
 - HR zapisi zaposlenih (hr_records kolekcija)
 """
 
@@ -1757,7 +1757,7 @@ def format_debug_output(debug: dict, transcribed: str = None) -> list[str]:
 def answer_question(
     audio_path: str | None,
     history: list[dict],
-    show_debug: bool = True,
+    show_debug: bool = False,
 ) -> tuple[list[dict], None]:
     """
     Obrađuje audio pitanje i vraća odgovor o projektnim statusima ili HR podacima.
@@ -1801,6 +1801,15 @@ def answer_question(
         error_msg = f"Neočekivana greška: {str(e)}"
         history.append({"role": "assistant", "content": error_msg})
         return history, None
+
+
+def answer_question_ptt(
+    audio_path: str | None,
+    history: list[dict],
+) -> tuple[list[dict], str]:
+    """Wrapper za PTT MediaRecorder fallback – prima putanju, poziva answer_question."""
+    updated_history, _ = answer_question(audio_path, history)
+    return updated_history, ""
 
 
 def answer_text_question(
@@ -2283,152 +2292,520 @@ def run_hr_benchmark() -> dict:
 
 
 CUSTOM_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Rajdhani:wght@500;600;700&display=swap');
+
+:root {
+    --cyber-bg: #060c18;
+    --cyber-panel: #08111f;
+    --cyber-border: rgba(0, 195, 255, 0.16);
+    --cyber-accent: #00c3ff;
+    --cyber-accent-dim: rgba(0, 195, 255, 0.5);
+    --cyber-text: #b8ddf5;
+    --cyber-text-dim: rgba(160, 210, 240, 0.5);
+    --cyber-glow: 0 0 18px rgba(0, 195, 255, 0.22);
+    --cyber-glow-strong: 0 0 30px rgba(0, 195, 255, 0.42);
+    --body-background-fill: #060c18 !important;
+    --background-fill-primary: #08111f !important;
+    --background-fill-secondary: #060c18 !important;
+    --border-color-accent: rgba(0, 195, 255, 0.28) !important;
+    --border-color-primary: rgba(0, 195, 255, 0.12) !important;
+    --color-accent: #00c3ff !important;
+    --color-accent-soft: rgba(0, 195, 255, 0.12) !important;
+    --input-background-fill: #04090f !important;
+    --checkbox-background-color: #04090f !important;
+    --checkbox-background-color-selected: #00c3ff !important;
+    --button-primary-background-fill: linear-gradient(135deg, #004060 0%, #001f3f 100%) !important;
+    --button-primary-background-fill-hover: linear-gradient(135deg, #005880 0%, #002855 100%) !important;
+    --button-primary-text-color: #00c3ff !important;
+    --button-primary-border-color: #00c3ff !important;
+}
+
+body,
+.gradio-container {
+    background: var(--cyber-bg) !important;
+    font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+}
+
+.gradio-container {
+    background-image:
+        linear-gradient(rgba(0, 195, 255, 0.022) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 195, 255, 0.022) 1px, transparent 1px) !important;
+    background-size: 48px 48px !important;
+    max-width: 1100px !important;
+    margin: 0 auto !important;
+}
+
+/* ── HEADER ── */
+.gradio-container h1 {
+    font-family: 'Rajdhani', 'JetBrains Mono', monospace !important;
+    font-size: 2.1rem !important;
+    font-weight: 700 !important;
+    color: var(--cyber-accent) !important;
+    letter-spacing: 8px !important;
+    text-transform: uppercase !important;
+    text-shadow: var(--cyber-glow-strong), 0 0 60px rgba(0, 195, 255, 0.12) !important;
+    padding-bottom: 14px !important;
+    border-bottom: 1px solid var(--cyber-border) !important;
+    margin-bottom: 18px !important;
+    text-align: center !important;
+}
+
+/* ── PANELS / BLOCKS ── */
+.block, .panel, .form {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* ── CHATBOT ── */
+div[data-testid="chatbot"],
+.chatbot-container {
+    background: var(--cyber-panel) !important;
+    border: 1px solid var(--cyber-border) !important;
+    border-radius: 3px !important;
+    box-shadow: var(--cyber-glow), inset 0 0 80px rgba(0, 0, 20, 0.25) !important;
+}
+
+div[data-testid="chatbot"] > div {
+    background: transparent !important;
+}
+
+/* User bubble */
+div[data-testid="user"] > div,
+.message.user > div {
+    background: rgba(0, 50, 95, 0.55) !important;
+    border: 1px solid rgba(0, 140, 210, 0.22) !important;
+    color: #a8d4ee !important;
+    border-radius: 2px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 13px !important;
+}
+
+/* Bot bubble */
+div[data-testid="bot"] > div,
+.message.bot > div {
+    background: rgba(0, 18, 42, 0.65) !important;
+    border: 1px solid rgba(0, 80, 160, 0.14) !important;
+    color: var(--cyber-text) !important;
+    border-radius: 2px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 13px !important;
+    line-height: 1.75 !important;
+}
+
+/* ── LABELS ── */
+label > span,
+.label-wrap span,
+.block label > span {
+    color: var(--cyber-accent-dim) !important;
+    font-size: 10px !important;
+    letter-spacing: 2.5px !important;
+    text-transform: uppercase !important;
+    font-weight: 600 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+}
+
+/* ── TEXTBOX ── */
+textarea,
+input[type="text"] {
+    background: rgba(3, 8, 18, 0.96) !important;
+    border: 1px solid var(--cyber-border) !important;
+    color: var(--cyber-accent) !important;
+    border-radius: 2px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 13px !important;
+    caret-color: var(--cyber-accent) !important;
+    transition: border-color 0.2s, box-shadow 0.2s !important;
+}
+
+textarea:focus,
+input[type="text"]:focus {
+    border-color: var(--cyber-accent) !important;
+    box-shadow: var(--cyber-glow) !important;
+    outline: none !important;
+    background: rgba(0, 6, 16, 0.99) !important;
+}
+
+textarea::placeholder,
+input::placeholder {
+    color: rgba(0, 170, 210, 0.28) !important;
+    font-style: normal !important;
+}
+
+/* ── SEND BUTTON ── */
+button.primary {
+    background: linear-gradient(135deg, rgba(0, 76, 120, 0.9) 0%, rgba(0, 36, 72, 0.9) 100%) !important;
+    border: 1px solid var(--cyber-accent) !important;
+    color: var(--cyber-accent) !important;
+    letter-spacing: 3px !important;
+    font-weight: 700 !important;
+    font-size: 10px !important;
+    text-transform: uppercase !important;
+    border-radius: 2px !important;
+    box-shadow: var(--cyber-glow) !important;
+    transition: all 0.18s ease !important;
+    font-family: 'JetBrains Mono', monospace !important;
+}
+
+button.primary:hover {
+    background: linear-gradient(135deg, rgba(0, 106, 160, 0.95) 0%, rgba(0, 56, 105, 0.95) 100%) !important;
+    box-shadow: var(--cyber-glow-strong) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ── CHECKBOX ── */
+input[type="checkbox"] {
+    accent-color: var(--cyber-accent) !important;
+}
+
+/* ── AUDIO COMPONENT ── */
 .audio-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 20px;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 20px !important;
+    background: rgba(0, 8, 22, 0.5) !important;
+    border: 1px solid var(--cyber-border) !important;
+    border-radius: 2px !important;
 }
+
+#voice-input {
+    border: 1px solid rgba(0, 195, 255, 0.12) !important;
+    border-radius: 2px !important;
+}
+
+/* ── RECORDING INFO ── */
 .recording-info {
-    text-align: center;
-    color: #666;
-    font-size: 14px;
-    margin-top: 10px;
+    text-align: center !important;
 }
-body.push-to-talk-recording .recording-info {
-    color: #c62828;
-    font-weight: 600;
+
+.recording-info p,
+.recording-info {
+    color: var(--cyber-text-dim) !important;
+    font-size: 12px !important;
+    margin-top: 10px !important;
+    letter-spacing: 0.4px !important;
 }
+
+.recording-info kbd {
+    background: rgba(0, 195, 255, 0.07) !important;
+    border: 1px solid rgba(0, 195, 255, 0.33) !important;
+    color: var(--cyber-accent) !important;
+    border-radius: 2px !important;
+    padding: 1px 6px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 11px !important;
+}
+
+/* ── RECORDING ACTIVE ── */
+body.push-to-talk-recording .recording-info,
+body.push-to-talk-recording .recording-info p {
+    color: #ff3333 !important;
+    font-weight: 600 !important;
+}
+
 body.push-to-talk-recording #voice-input {
-    outline: 2px solid #c62828;
-    outline-offset: 4px;
-    border-radius: 8px;
+    outline: 2px solid #ff3333 !important;
+    outline-offset: 4px !important;
+    border-radius: 4px !important;
+    box-shadow: 0 0 22px rgba(255, 51, 51, 0.32) !important;
 }
+
+/* ── SAKRIJ UPLOAD SOURCE SELEKTOR (zadržava file input u DOM-u) ── */
+#voice-input .source-selection,
+#voice-input [data-testid="source-select"],
+#voice-input .source-select,
+#voice-input > .wrap > .tabs,
+#voice-input .tab-nav {
+    display: none !important;
+}
+
+/* ── SAKRIJ PTT FALLBACK TEXTBOX ── */
+.ptt-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    clip: rect(0,0,0,0) !important;
+    white-space: nowrap !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+}
+
+/* ── HR SEPARATOR ── */
+hr {
+    border: none !important;
+    border-top: 1px solid var(--cyber-border) !important;
+    margin: 10px 0 !important;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: var(--cyber-bg); }
+::-webkit-scrollbar-thumb { background: rgba(0, 195, 255, 0.22); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 195, 255, 0.42); }
+
+/* ── BADGES ── */
 .domain-badge {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 12px;
+    border-radius: 2px;
+    font-size: 11px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
     margin-right: 5px;
+    font-family: 'JetBrains Mono', monospace;
 }
+
 .project-badge {
-    background-color: #e3f2fd;
-    color: #1565c0;
+    background: rgba(0, 100, 200, 0.1);
+    color: #4db8ff;
+    border: 1px solid rgba(0, 100, 200, 0.28);
 }
+
 .hr-badge {
-    background-color: #f3e5f5;
-    color: #7b1fa2;
+    background: rgba(160, 0, 220, 0.1);
+    color: #c46bff;
+    border: 1px solid rgba(160, 0, 220, 0.28);
 }
 """
 
 PUSH_TO_TALK_JS = """
 (() => {
-    const COMBO_KEYS = new Set(["y", "t"]);
-    const pressedKeys = new Set();
     let shortcutActive = false;
+    let usingFallback = false;
+    let mediaRecorder = null;
+    let audioChunks = [];
 
-    const getAudioRoot = () => document.getElementById("voice-input");
+    // Traversira shadow DOM rekurzivno – potrebno za Gradio 6 web komponente
+    const deepQuery = (root, selector) => {
+        const hit = root.querySelector(selector);
+        if (hit) return hit;
+        for (const el of root.querySelectorAll("*")) {
+            if (el.shadowRoot) {
+                const found = deepQuery(el.shadowRoot, selector);
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+
+    const getAudioRoot = () => document.getElementById("voice-input") || document.body;
 
     const isEditableTarget = () => {
         const el = document.activeElement;
-        if (!el) return false;
-        const tag = el.tagName;
-        return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+        return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
     };
 
-    const getRecordButton = () => {
+    const setVisual = (on) => document.body.classList.toggle("push-to-talk-recording", on);
+
+    // Pokušava više CSS selektora kroz shadow DOM
+    const RECORD_SELS = [
+        "button.record-button",
+        "button[aria-label='Record']",
+        "button[aria-label='Start recording']",
+        "button[aria-label*='ecord']",
+        "button[title*='ecord']",
+        "button[data-testid*='record']",
+    ];
+    const STOP_SELS = [
+        "button.stop-button",
+        "button.stop-button-paused",
+        "button[aria-label='Stop recording']",
+        "button[aria-label*='top']",
+        "button[title*='top']",
+        "button[data-testid*='stop']",
+    ];
+
+    const findButton = (selectors) => {
         const root = getAudioRoot();
-        if (!root) return null;
-        return root.querySelector("button.record-button");
+        for (const sel of selectors) {
+            const btn = deepQuery(root, sel);
+            if (btn && btn.offsetWidth > 0) return btn;
+        }
+        return null;
     };
 
-    const getStopButton = () => {
-        const root = getAudioRoot();
-        if (!root) return null;
-        return root.querySelector("button.stop-button, button.stop-button-paused");
+    // MediaRecorder fallback ako Gradio dugmad nisu dostupna
+    const startFallback = async () => {
+        usingFallback = true;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+                ? "audio/webm;codecs=opus" : "audio/webm";
+            mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+            audioChunks = [];
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+            mediaRecorder.onstop = async () => {
+                stream.getTracks().forEach(t => t.stop());
+                await sendBlob(new Blob(audioChunks, { type: mime }));
+            };
+            mediaRecorder.start();
+            console.log("[PTT] MediaRecorder started");
+        } catch (err) {
+            console.error("[PTT] Mic error:", err);
+            shortcutActive = false;
+            setVisual(false);
+        }
     };
 
-    const isRecordingVisible = () => {
-        const stopBtn = getStopButton();
-        return !!(stopBtn && stopBtn.offsetParent !== null);
+    const sendBlob = async (blob) => {
+        // Pokušaj 1: DataTransfer inject u Gradio-ov file input
+        const fileInput = deepQuery(getAudioRoot(), 'input[type="file"]');
+        if (fileInput) {
+            const dt = new DataTransfer();
+            dt.items.add(new File([blob], "ptt.webm", { type: blob.type }));
+            fileInput.files = dt.files;
+            fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+            console.log("[PTT] Sent via DataTransfer");
+            return;
+        }
+
+        // Pokušaj 2: upload na /upload pa trigger skriveni textbox
+        try {
+            const fd = new FormData();
+            fd.append("files", blob, "ptt.webm");
+            const res = await fetch("/upload", { method: "POST", body: fd });
+            if (!res.ok) throw new Error(res.status);
+            const [filePath] = await res.json();
+            console.log("[PTT] Uploaded:", filePath);
+            triggerTextbox(filePath);
+        } catch (err) {
+            console.error("[PTT] Upload failed:", err);
+        }
     };
 
-    const setRecordingVisual = (active) => {
-        document.body.classList.toggle("push-to-talk-recording", active);
+    const triggerTextbox = (value) => {
+        const wrap = document.getElementById("ptt-path-input");
+        const el = wrap?.querySelector("textarea") || wrap?.querySelector("input");
+        if (!el) { console.error("[PTT] ptt-path-input not in DOM"); return; }
+        const proto = el instanceof HTMLTextAreaElement
+            ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, "value");
+        if (setter?.set) setter.set.call(el, value); else el.value = value;
+        el.focus();
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        setTimeout(() => {
+            ["keydown", "keypress"].forEach(t =>
+                el.dispatchEvent(new KeyboardEvent(t, {
+                    key: "Enter", code: "Enter", keyCode: 13, which: 13,
+                    charCode: t === "keypress" ? 13 : 0,
+                    bubbles: true, cancelable: true,
+                }))
+            );
+        }, 60);
     };
 
-    const startRecording = () => {
-        if (shortcutActive || isRecordingVisible()) return;
-        const btn = getRecordButton();
-        if (!btn || btn.offsetParent === null) return;
-        btn.click();
+    const startRecording = async () => {
+        if (shortcutActive) return;
         shortcutActive = true;
-        requestAnimationFrame(() => {
-            if (isRecordingVisible()) {
-                setRecordingVisual(true);
-            } else {
-                shortcutActive = false;
-            }
-        });
+        usingFallback = false;
+        setVisual(true);
+
+        const btn = findButton(RECORD_SELS);
+        if (btn && !findButton(STOP_SELS)) {
+            console.log("[PTT] Clicking Gradio record button:", btn.outerHTML.slice(0, 120));
+            btn.click();
+        } else {
+            console.log("[PTT] Gradio button not found – MediaRecorder fallback");
+            await startFallback();
+        }
     };
 
     const stopRecording = () => {
         if (!shortcutActive) return;
-        const stopBtn = getStopButton();
-        if (stopBtn && stopBtn.offsetParent !== null) {
-            stopBtn.click();
-        }
         shortcutActive = false;
-        pressedKeys.clear();
-        setRecordingVisual(false);
+        setVisual(false);
+
+        if (usingFallback) {
+            if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+            return;
+        }
+
+        const tryStop = (n) => {
+            const btn = findButton(STOP_SELS);
+            if (btn) {
+                console.log("[PTT] Clicking Gradio stop button:", btn.outerHTML.slice(0, 120));
+                btn.click();
+            } else if (n > 0) {
+                setTimeout(() => tryStop(n - 1), 100);
+            } else {
+                console.warn("[PTT] Stop button not found – switching to fallback for next time");
+            }
+        };
+        tryStop(6);
     };
 
-    const comboHeld = () => pressedKeys.has("y") && pressedKeys.has("t");
-
-    document.addEventListener("keydown", (event) => {
-        const key = event.key.toLowerCase();
-        if (!COMBO_KEYS.has(key) || event.repeat) return;
-        if (isEditableTarget() && !shortcutActive) return;
-
-        pressedKeys.add(key);
-        if (comboHeld()) {
-            event.preventDefault();
-            startRecording();
-        }
+    document.addEventListener("keydown", (e) => {
+        if (e.code !== "Space" || e.repeat || isEditableTarget()) return;
+        e.preventDefault();
+        startRecording();
     }, true);
 
-    document.addEventListener("keyup", (event) => {
-        const key = event.key.toLowerCase();
-        if (!COMBO_KEYS.has(key)) return;
-
-        pressedKeys.delete(key);
-        if (shortcutActive) {
-            event.preventDefault();
-            stopRecording();
-        }
+    document.addEventListener("keyup", (e) => {
+        if (e.code !== "Space") return;
+        if (shortcutActive) { e.preventDefault(); stopRecording(); }
     }, true);
 
-    window.addEventListener("blur", () => {
-        if (!shortcutActive) return;
-        stopRecording();
-    });
+    window.addEventListener("blur", () => { if (shortcutActive) stopRecording(); });
 })();
 """
 
 
 def create_ui() -> gr.Blocks:
     """Kreira Gradio UI sa podrškom za projektne i HR upite."""
-    with gr.Blocks(title="Статус пројеката и HR - STT + RAG") as demo:
-        gr.Markdown("# TeрвoБот")
+    theme = gr.themes.Base(
+        primary_hue="cyan",
+        secondary_hue="blue",
+        neutral_hue="slate",
+        font=gr.themes.GoogleFont("JetBrains Mono"),
+    )
+    with gr.Blocks(
+        title="ТервоБот",
+        theme=theme,
+        css=CUSTOM_CSS,
+        js=PUSH_TO_TALK_JS,
+    ) as demo:
+        gr.HTML(
+            "<div style='text-align:center; padding:22px 0 6px 0;'>"
+            "<h1 style='margin:0'>ТЕРВОБОТ</h1>"
+            "<p style='color:rgba(0,195,255,0.38); font-size:10px; letter-spacing:5px;"
+            " margin-top:7px; text-transform:uppercase; font-family:monospace;'>"
+            "</p></div>"
+        )
         
         
-        show_debug = gr.Checkbox(label="Прикажи debug информације", value=True)
         
         chatbot = gr.Chatbot(
             label="Разговор",
             height=450,
         )
         
+        
+       
+        with gr.Row():
+            with gr.Column():
+                audio_input = gr.Audio(
+                    sources=["microphone", "upload"],
+                    type="filepath",
+                    elem_id="voice-input",
+                    elem_classes=["audio-container"],
+                )
+                gr.Markdown(
+                    "<p class='recording-info'>🔴 Држите <kbd>Space</kbd> за снимање → "
+                    "пустите да пошаљете питање (или кликните микрофон)</p>",
+                    elem_classes=["recording-info"],
+                )
+
+        # Скривени textbox — fallback trigger за PTT MediaRecorder снимање
+        ptt_path_input = gr.Textbox(
+            visible=True,
+            elem_id="ptt-path-input",
+            elem_classes=["ptt-hidden"],
+            label="",
+            show_label=False,
+            max_lines=1,
+        )
+
         with gr.Row():
             with gr.Column(scale=3):
                 text_input = gr.Textbox(
@@ -2437,37 +2814,34 @@ def create_ui() -> gr.Blocks:
                 )
             with gr.Column(scale=1):
                 send_btn = gr.Button("Пошаљи", variant="primary")
-        
-        with gr.Row():
-            with gr.Column():
-                audio_input = gr.Audio(
-                    sources=["microphone"],
-                    type="filepath",
-                    label="🎤 Кликните за снимање",
-                    elem_id="voice-input",
-                    elem_classes=["audio-container"],
-                )
-                gr.Markdown(
-                    "<p class='recording-info'>🔴 Држите <kbd>Y</kbd> + <kbd>T</kbd> за снимање → "
-                    "пустите да пошаљете питање (или кликните микрофон)</p>",
-                    elem_classes=["recording-info"],
-                )
-        
+
         audio_input.stop_recording(
             fn=answer_question,
-            inputs=[audio_input, chatbot, show_debug],
+            inputs=[audio_input, chatbot],
             outputs=[chatbot, audio_input],
         )
-        
+
+        audio_input.upload(
+            fn=answer_question,
+            inputs=[audio_input, chatbot],
+            outputs=[chatbot, audio_input],
+        )
+
+        ptt_path_input.submit(
+            fn=answer_question_ptt,
+            inputs=[ptt_path_input, chatbot],
+            outputs=[chatbot, ptt_path_input],
+        )
+
         send_btn.click(
             fn=answer_text_question,
-            inputs=[text_input, chatbot, show_debug],
+            inputs=[text_input, chatbot],
             outputs=[chatbot, text_input],
         )
         
         text_input.submit(
             fn=answer_text_question,
-            inputs=[text_input, chatbot, show_debug],
+            inputs=[text_input, chatbot],
             outputs=[chatbot, text_input],
         )
         
@@ -2578,8 +2952,6 @@ def main():
     demo.launch(
         server_name=GRADIO_HOST,
         server_port=GRADIO_PORT,
-        css=CUSTOM_CSS,
-        js=PUSH_TO_TALK_JS,
     )
 
 
